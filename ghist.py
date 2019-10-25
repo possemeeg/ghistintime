@@ -1,11 +1,11 @@
 import sqlite3
 import os
 import sys
-
+import argparse
 
 class GHistInTime(object):
-    def __init__(self):
-        self.file = 'ghist.db'
+    def __init__(self, dbname):
+        self.file = dbname
 
     def __enter__(self):
         self.conn = sqlite3.connect(self.file)
@@ -37,11 +37,14 @@ class GHistInTime(object):
         self.conn.commit()
         c.close()
 
-    def all(self):
+    def get(self, num=None):
         c = self.conn.cursor()
-        c.execute('''
-        SELECT command FROM ghist order by id desc
-        ''')
+        try:
+            num=int(num)
+        except (TypeError, ValueError):
+            num=None
+        cmd = 'select command from (SELECT command, id FROM ghist order by id desc LIMIT {}) order by id'.format(num) if num else 'SELECT command FROM ghist order by id asc'
+        c.execute(cmd)
         ret = [r for (r,) in c.fetchall()]
         self.conn.commit()
         c.close()
@@ -56,10 +59,18 @@ class GHistInTime(object):
         c.close()
         
 if __name__ == '__main__':
-    with GHistInTime() as gh:
-        if len(sys.argv) > 1:
-            gh.add(sys.argv[1])
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--database', required=True, help='sqlite3 file')
+    parser.add_argument('command', choices=['get', 'put'])
+    parser.add_argument('text', nargs='*')
+
+    args = parser.parse_intermixed_args()
+
+    with GHistInTime(args.database) as gh:
+        if args.command == 'put':
+            gh.add(' '.join(args.text))
         else:
-            for c in gh.all():
-                 print(c)
+            if args.command == 'get':
+                for c in gh.get(args.text[0] if len(args.text) else None):
+                     print(c)
     
