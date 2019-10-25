@@ -1,5 +1,6 @@
 import sqlite3
 import os
+import sys
 
 
 class GHistInTime(object):
@@ -54,5 +55,11 @@ class GHistInTime(object):
         self.conn.commit()
         c.close()
         
-        
+if __name__ == '__main__':
+    with GHistInTime() as gh:
+        if len(sys.argv) > 1:
+            gh.add(sys.argv[1])
+        else:
+            for c in gh.all():
+                 print(c)
     
