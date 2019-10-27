@@ -3,60 +3,59 @@ import os
 import sys
 import argparse
 
-class GHistInTime(object):
+class GHistConnection(object):
     def __init__(self, dbname):
         self.file = dbname
 
     def __enter__(self):
         self.conn = sqlite3.connect(self.file)
-        c = self.conn.cursor()
-        c.execute('''
+        self.cur = self.conn.cursor()
+        self.cur.execute('''
         CREATE TABLE IF NOT EXISTS ghist(
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             command TEXT NOT NULL UNIQUE,
             inserted INTEGER NOT NULL
         )
         ''')
-        self.conn.commit()
         return self;
+
+    @property
+    def cursor(self):
+        return self.cur
 
     def __exit__(self, type, value, traceback):
         self.conn.commit()
+        self.cursor.close()
         self.conn.close()
+        self.cur = None
+        self.conn = None
 
-    def add(self, line):
-        c = self.conn.cursor()
-        c.execute('''
+def ghist_add(dbfile, line):
+    with GHistConnection(dbfile) as c:
+        c.cursor.execute('''
         DELETE FROM ghist
         WHERE command = ?
         ''', (line,))
-        c.execute('''
+        c.cursor.execute('''
         INSERT INTO ghist(command, inserted)
         VALUES(?, strftime('%s','now'))
         ''', (line,))
-        self.conn.commit()
-        c.close()
 
-    def get(self, num=None):
-        c = self.conn.cursor()
+def ghist_get(dbfile, num=None):
+    with GHistConnection(dbfile) as c:
         try:
             num=int(num)
         except (TypeError, ValueError):
             num=None
-        cmd = 'select command from (SELECT command, id FROM ghist order by id desc LIMIT {}) order by id'.format(num) if num else 'SELECT command FROM ghist order by id asc'
-        c.execute(cmd)
-        ret = [r for (r,) in c.fetchall()]
-        self.conn.commit()
-        c.close()
-        return ret
+        cmd = f'''select command from
+           (SELECT command, id FROM ghist order by id desc LIMIT {num}) order by id
+           ''' if num else 'SELECT command FROM ghist order by id asc'
+        c.cursor.execute(cmd)
+        return [r for (r,) in c.cursor.fetchall()]
 
-    def clear(self):
-        c = self.conn.cursor()
-        c.execute('''
-        DELETE FROM ghist
-        ''')
-        self.conn.commit()
-        c.close()
+def ghist_clear(dbfile):
+    if os.path.exists(dbfile):
+        os.remove(dbfile)
         
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -66,11 +65,10 @@ if __name__ == '__main__':
 
     args = parser.parse_intermixed_args()
 
-    with GHistInTime(args.database) as gh:
-        if args.command == 'put':
-            gh.add(' '.join(args.text))
-        else:
-            if args.command == 'get':
-                for c in gh.get(args.text[0] if len(args.text) else None):
-                     print(c)
+    if args.command == 'put':
+        ghist_add(args.database, ' '.join(args.text))
+    else:
+        if args.command == 'get':
+            for c in ghist_get(args.database, args.text[0] if len(args.text) else None):
+                 print(c)
     
