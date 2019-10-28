@@ -31,6 +31,7 @@ class GHistConnection(object):
         self.conn = None
 
 def ghist_add(dbfile, line):
+    line = line.strip()
     with GHistConnection(dbfile) as c:
         c.cursor.execute('''
         DELETE FROM ghist
