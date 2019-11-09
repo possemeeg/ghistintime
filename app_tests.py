@@ -43,25 +43,24 @@ class GHistTest(TestCase):
         ghist_assign(self.TESTDB, 2, 'c2')
         self.assertEqual(ghist_get(self.TESTDB)[1], '[c2] command 2')
 
-    @mock.patch('subprocess.call')
+    @mock.patch('subprocess.run')
     def test_execute_command(self, sc):
         ghist_add(self.TESTDB, 'command 1')
         ghist_add(self.TESTDB, 'command 2')
         ghist_add(self.TESTDB, 'command 3')
         ghist_exec(self.TESTDB, 2)
-        sc.assert_called_with(['command', '2'])
+        sc.assert_called_with(['command', '2'], shell=True)
 
-    @mock.patch('subprocess.call')
+    @mock.patch('subprocess.run')
     def test_execute_command_by_shortcut(self, sc):
         ghist_add(self.TESTDB, 'command 1')
         ghist_add(self.TESTDB, 'command 2')
         ghist_add(self.TESTDB, 'command 3')
         ghist_assign(self.TESTDB, 2, 'c2')
         ghist_exec(self.TESTDB, 'c2')
-        sc.assert_called_with(['command', '2'])
+        sc.assert_called_with(['command', '2'], shell=True)
         ghist_add(self.TESTDB, 'command 4')
         ghist_exec(self.TESTDB, 'c2')
-
 
 if __name__ == '__main__':
     main()

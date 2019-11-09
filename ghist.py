@@ -44,7 +44,7 @@ def ghist_add(dbfile, line):
         VALUES(?, strftime('%s','now'))
         ''', (line,))
 
-def ghist_get(dbfile, num=None, fmt='[{r}] {c}'):
+def ghist_get(dbfile, num=None, fmt=None):
     with GHistConnection(dbfile) as c:
         try:
             num=int(num)
@@ -55,7 +55,7 @@ def ghist_get(dbfile, num=None, fmt='[{r}] {c}'):
                FROM ghist ORDER BY id DESC LIMIT {num}) ORDER BY id
            ''' if num else 'SELECT command, coalesce(shortcut, id) as ref FROM ghist ORDER BY id ASC'
         c.cursor.execute(cmd)
-        return [fmt.format(c=c,r=r) for (c,r,) in c.cursor.fetchall()]
+        return [(fmt or '[{r}] {c}').format(c=c,r=r) for (c,r,) in c.cursor.fetchall()]
 
 def ghist_get_by_ref(dbfile, ref):
     i, s = _id_or_shortcut(ref)
@@ -70,21 +70,26 @@ def ghist_get_by_ref(dbfile, ref):
 
 def ghist_assign(dbfile, cur, alias):
     i, s = _id_or_shortcut(cur)
+    alias = alias[0:4]
     with GHistConnection(dbfile) as c:
+        c.cursor.execute('''
+        UPDATE ghist SET shortcut = null
+        WHERE shortcut = ?
+        ''', (alias,))
         if i:
             c.cursor.execute('''
             UPDATE ghist SET shortcut = ?
             WHERE id = ?
-            ''', (alias[0:4], i))
+            ''', (alias, i))
         else:
             c.cursor.execute('''
             UPDATE ghist SET shortcut = ?
             WHERE shortcut = ?
-            ''', (alias[0:4], s))
+            ''', (alias, s))
 
 def ghist_exec(dbfile, ref):
     cmd = ghist_get_by_ref(dbfile, ref)
-    subprocess.call(cmd.split())
+    subprocess.run(['bash', '-i', '-c',] + cmd.split())
 
 def ghist_clear(dbfile):
     if os.path.exists(dbfile):
@@ -103,7 +108,7 @@ def run(args):
         return
     
     if args.command == 'get':
-        for c in ghist_get(args.database, args.text[0] if len(args.text) else None):
+        for c in ghist_get(args.database, args.text[0] if len(args.text) else None, args.text[1] if len(args.text) > 1 else None):
             print(c)
         return
     
@@ -117,10 +122,15 @@ def run(args):
             return
         ghist_exec(args.database, args.text[0])
 
+    if args.command == 'ref':
+        if len(args.text) < 1:
+            return
+        print(ghist_get_by_ref(args.database, args.text[0]))
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--database', required=True, help='sqlite3 file')
-    parser.add_argument('command', choices=['get', 'put', 'ass', 'ex'])
+    parser.add_argument('command', choices=['get', 'put', 'ass', 'ex', 'ref'])
     parser.add_argument('text', nargs='*')
 
     run(parser.parse_intermixed_args())
