@@ -88,8 +88,10 @@ def ghist_assign(dbfile, cur, alias):
             ''', (alias, s))
 
 def ghist_exec(dbfile, ref):
-    cmd = ghist_get_by_ref(dbfile, ref)
-    subprocess.run(['bash', '-i', '-c',] + cmd.split())
+    cmd = ghist_get_by_ref(dbfile, ref).replace('"', '""')
+    #subprocess.run(['bash', '-i', '-c',] + cmd.split())
+    #breakpoint()
+    os.system(f'bash -i -c "{cmd}"')
 
 def ghist_clear(dbfile):
     if os.path.exists(dbfile):
