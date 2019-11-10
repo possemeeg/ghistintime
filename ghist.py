@@ -57,6 +57,12 @@ def ghist_get(dbfile, num=None, fmt=None):
         c.cursor.execute(cmd)
         return [(fmt or '[{r}] {c}').format(c=c,r=r) for (c,r,) in c.cursor.fetchall()]
 
+def ghist_get_assigned(dbfile, fmt=None):
+    with GHistConnection(dbfile) as c:
+        cmd = 'SELECT command, shortcut as ref FROM ghist where shortcut is not null ORDER BY id ASC'
+        c.cursor.execute(cmd)
+        return [(fmt or '[{r}] {c}').format(c=c,r=r) for (c,r,) in c.cursor.fetchall()]
+
 def ghist_get_by_ref(dbfile, ref):
     i, s = _id_or_shortcut(ref)
     with GHistConnection(dbfile) as c:
@@ -88,7 +94,9 @@ def ghist_assign(dbfile, cur, alias):
             ''', (alias, s))
 
 def ghist_exec(dbfile, ref):
-    cmd = ghist_get_by_ref(dbfile, ref).replace('"', '""')
+    cmd = ghist_get_by_ref(dbfile, ref)
+    ghist_add(dbfile, cmd)
+    cmd = cmd.replace('"', '""')
     #subprocess.run(['bash', '-i', '-c',] + cmd.split())
     #breakpoint()
     os.system(f'bash -i -c "{cmd}"')
@@ -116,8 +124,10 @@ def run(args):
     
     if args.command == 'ass':
         if len(args.text) < 2:
-            return
-        ghist_assign(args.database, args.text[0], args.text[1])
+            for c in ghist_get_assigned(args.database):
+                print(c)
+        else:
+            ghist_assign(args.database, args.text[0], args.text[1])
 
     if args.command == 'ex':
         if len(args.text) < 1:
