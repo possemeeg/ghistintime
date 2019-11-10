@@ -67,12 +67,12 @@ def ghist_get_by_ref(dbfile, ref):
     i, s = _id_or_shortcut(ref)
     with GHistConnection(dbfile) as c:
         if i:
-            c.cursor.execute('SELECT command FROM ghist WHERE id = ?', (i,))
+            c.cursor.execute('SELECT command, id, shortcut FROM ghist WHERE id = ?', (i,))
         else:
-            c.cursor.execute('SELECT command FROM ghist WHERE shortcut = ?', (s,))
+            c.cursor.execute('SELECT command, id, shortcut FROM ghist WHERE shortcut = ?', (s,))
         row = c.cursor.fetchone()
         if (len(row)):
-            return row[0]
+            return row
 
 def ghist_assign(dbfile, cur, alias):
     i, s = _id_or_shortcut(cur)
@@ -94,8 +94,18 @@ def ghist_assign(dbfile, cur, alias):
             ''', (alias, s))
 
 def ghist_exec(dbfile, ref):
-    cmd = ghist_get_by_ref(dbfile, ref)
-    ghist_add(dbfile, cmd)
+    cmd, i, shortcut = ghist_get_by_ref(dbfile, ref)
+
+    with GHistConnection(dbfile) as c:
+        c.cursor.execute('''
+        DELETE FROM ghist
+        WHERE id = ?
+        ''', (i,))
+        c.cursor.execute('''
+        INSERT INTO ghist(command, shortcut, inserted)
+        VALUES(?, ?, strftime('%s','now'))
+        ''', (cmd,shortcut))
+
     cmd = cmd.replace('"', '""')
     #subprocess.run(['bash', '-i', '-c',] + cmd.split())
     #breakpoint()
@@ -137,7 +147,7 @@ def run(args):
     if args.command == 'ref':
         if len(args.text) < 1:
             return
-        print(ghist_get_by_ref(args.database, args.text[0]))
+        print(ghist_get_by_ref(args.database, args.text[0])[0])
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
