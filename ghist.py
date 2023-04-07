@@ -50,12 +50,17 @@ def ghist_get(dbfile, num=None, fmt=None):
             num=int(num)
         except (TypeError, ValueError):
             num=None
-        cmd = f'''SELECT command, ref FROM
-           (SELECT command, id, coalesce(shortcut, id) as ref
-               FROM ghist ORDER BY id DESC LIMIT {num}) ORDER BY id
-           ''' if num else 'SELECT command, coalesce(shortcut, id) as ref FROM ghist ORDER BY id ASC'
+        if num:
+            cmd = f'''SELECT command, ref, datetime(inserted, 'unixepoch', 'localtime')
+               FROM
+               (SELECT command, id, coalesce(shortcut, id) as ref, inserted
+                   FROM ghist ORDER BY id DESC LIMIT {num}) ORDER BY id
+               ''' 
+        else:
+            cmd ='''SELECT command, coalesce(shortcut, id) as ref, datetime(inserted, 'unixepoch', 'localtime')
+            FROM ghist ORDER BY id ASC'''
         c.cursor.execute(cmd)
-        return [(fmt or '[{r}] {c}').format(c=c,r=r) for (c,r,) in c.cursor.fetchall()]
+        return [(fmt or '[{r}] {c}').format(c=c,r=r,t=t) for (c,r,t) in c.cursor.fetchall()]
 
 def ghist_get_assigned(dbfile, fmt=None):
     with GHistConnection(dbfile) as c:
