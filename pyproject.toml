@@ -1,0 +1,17 @@
+[build-system]
+requires = ['setuptools']
+build-backend = 'setuptools.build_meta'
+
+[project]
+name = 'ghistintime'
+version = '0.0.1'
+dependencies = [
+]
+
+[project.scripts]
+ghistintime = 'ghistintime:run'
+gh = 'ghistintime:gh'
+ghe = 'ghistintime:ghe'
+ghr = 'ghistintime:ghr'
+gha = 'ghistintime:gha'
+gh_put = 'ghistintime:gh_put'
