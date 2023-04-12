@@ -3,19 +3,45 @@ from os import system, remove, path, makedirs
 import sys
 import argparse
 import subprocess
-from collections import namedtuple
 from configparser import ConfigParser
 from pathlib import Path
 
 CONFIG_FILE = f'{Path.home()}/.config/ghistintime/config.cfg'
 DEFAULT_DB = f'{Path.home()}/.config/ghistintime/ghist.db'
 
-class GHistConnection(object):
-    def __init__(self, dbname):
-        self.file = dbname
+def gh():
+    text_args = _text_args()
+    for c in ghist_get(text_args[0] if text_args else None, text_args[1] if text_args and len(text_args) > 1 else None):
+       print(c)
 
+def gh_put():
+    ghist_add(' '.join(_text_args()))
+
+def ghe():
+    text_args = _text_args()
+    if len(text_args) < 1:
+        return
+    ghist_exec(text_args[0])
+
+def ghr():
+    text_args = _text_args()
+    if len(text_args) < 1:
+        return
+    if len(args.text) < 1:
+        return
+    print(ghist_get_by_ref(text_args)[0])
+
+def gha():
+    text_args = _text_args()
+    if len(text_args) < 2:
+        for c in ghist_get_assigned():
+            print(c)
+    else:
+        ghist_assign(text_args[0], text_args[1])
+
+class GHistConnection(object):
     def __enter__(self):
-        self.conn = sqlite3.connect(self.file)
+        self.conn = sqlite3.connect(_get_db_file())
         self.cur = self.conn.cursor()
         self.cur.execute('''
         CREATE TABLE IF NOT EXISTS ghist(
@@ -38,9 +64,9 @@ class GHistConnection(object):
         self.cur = None
         self.conn = None
 
-def ghist_add(dbfile, line):
+def ghist_add(line):
     line = line.strip()
-    with GHistConnection(dbfile) as connection:
+    with GHistConnection() as connection:
         connection.cursor.execute('''
         DELETE FROM ghist
         WHERE command = ?
@@ -50,8 +76,8 @@ def ghist_add(dbfile, line):
         VALUES(?, strftime('%s','now'))
         ''', (line,))
 
-def ghist_get(dbfile, num=None, fmt=None):
-    with GHistConnection(dbfile) as connection:
+def ghist_get(num=None, fmt=None):
+    with GHistConnection() as connection:
         try:
             num=int(num)
         except (TypeError, ValueError):
@@ -69,15 +95,15 @@ def ghist_get(dbfile, num=None, fmt=None):
 
         return [(fmt or '[{r}] {c}').format(c=c,r=r,t=t) for (c,r,t) in connection.cursor.fetchall()]
 
-def ghist_get_assigned(dbfile, fmt=None):
-    with GHistConnection(dbfile) as connection:
+def ghist_get_assigned(fmt=None):
+    with GHistConnection() as connection:
         cmd = 'SELECT command, shortcut as ref FROM ghist where shortcut is not null ORDER BY id ASC'
         connection.cursor.execute(cmd)
         return [(fmt or '[{r}] {c}').format(c=c,r=r) for (c,r,) in connection.cursor.fetchall()]
 
-def ghist_get_by_ref(dbfile, ref):
+def ghist_get_by_ref(ref):
     i, s = _id_or_shortcut(ref)
-    with GHistConnection(dbfile) as connection:
+    with GHistConnection() as connection:
         if i:
             connection.cursor.execute('SELECT command, id, shortcut FROM ghist WHERE id = ?', (i,))
         else:
@@ -86,34 +112,34 @@ def ghist_get_by_ref(dbfile, ref):
         if (len(row)):
             return row
 
-def ghist_assign(dbfile, cur, alias):
+def ghist_assign(cur, alias):
     i, s = _id_or_shortcut(cur)
     alias = alias[0:4]
-    with GHistConnection(dbfile) as connection:
+    with GHistConnection() as connection:
         connection.cursor.execute('''
         UPDATE ghist SET shortcut = null
         WHERE shortcut = ?
         ''', (alias,))
         if i:
-            c.cursor.execute('''
+            connection.cursor.execute('''
             UPDATE ghist SET shortcut = ?
             WHERE id = ?
             ''', (alias, i))
         else:
-            c.cursor.execute('''
+            connection.cursor.execute('''
             UPDATE ghist SET shortcut = ?
             WHERE shortcut = ?
             ''', (alias, s))
 
-def ghist_exec(dbfile, ref):
-    cmd, i, shortcut = ghist_get_by_ref(dbfile, ref)
+def ghist_exec(ref):
+    cmd, i, shortcut = ghist_get_by_ref(ref)
 
-    with GHistConnection(dbfile) as c:
-        c.cursor.execute('''
+    with GHistConnection() as connection:
+        connection.cursor.execute('''
         DELETE FROM ghist
         WHERE id = ?
         ''', (i,))
-        c.cursor.execute('''
+        connection.cursor.execute('''
         INSERT INTO ghist(command, shortcut, inserted)
         VALUES(?, ?, strftime('%s','now'))
         ''', (cmd,shortcut))
@@ -121,10 +147,6 @@ def ghist_exec(dbfile, ref):
     cmd = cmd.replace('"', '""')
     system(f'bash -i -c "{cmd}"')
 
-def ghist_clear(dbfile):
-    if path.exists(dbfile):
-        remove(dbfile)
-        
 def _id_or_shortcut(ref):
     try:
         return int(ref), None
@@ -132,45 +154,7 @@ def _id_or_shortcut(ref):
         return None, ref
 
 
-Args = namedtuple('Args', 'command database text')
-
-def run_with_args(args):
-
-    if args.command == 'put':
-        ghist_add(args.database, ' '.join(args.text))
-        return
-    
-    if args.command == 'get':
-        for c in ghist_get(args.database, args.text[0] if args.text else None, args.text[1] if args.text and len(args.text) > 1 else None):
-            print(c)
-        return
-    
-    if args.command == 'ass':
-        if len(args.text) < 2:
-            for c in ghist_get_assigned(args.database):
-                print(c)
-        else:
-            ghist_assign(args.database, args.text[0], args.text[1])
-
-    if args.command == 'ex':
-        if len(args.text) < 1:
-            return
-        ghist_exec(args.database, args.text[0])
-
-    if args.command == 'ref':
-        if len(args.text) < 1:
-            return
-        print(ghist_get_by_ref(args.database, args.text[0])[0])
-
-def run():
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--database', required=True, help='sqlite3 file')
-    parser.add_argument('command', choices=['get', 'put', 'ass', 'ex', 'ref'])
-    parser.add_argument('text', nargs='*')
-
-    run_with_args(parser.parse_intermixed_args())
-
-def get_config():
+def _get_config():
     config = ConfigParser()
     if path.exists(CONFIG_FILE):
         config.read(CONFIG_FILE)
@@ -186,27 +170,12 @@ def get_config():
 
     return config
 
-def run_with_config(command: str):
+def _get_db_file():
+    return path.expanduser(_get_config()['DEFAULT']['db'])
+
+def _text_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('text', nargs='*')
     args = parser.parse_intermixed_args()
+    return args.text
 
-    run_with_args(Args(
-        command = command,
-        database = path.expanduser(get_config()['DEFAULT']['db']),
-        text = args.text))
-
-def gh():
-    run_with_config('get')
-
-def gh_put():
-    run_with_config('put')
-
-def ghe():
-    run_with_config('ex')
-
-def ghr():
-    run_with_config('ref')
-
-def gha():
-    run_with_config('ass')
